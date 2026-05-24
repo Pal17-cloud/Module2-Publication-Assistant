@@ -168,6 +168,3 @@ The system was evaluated across five AI/ML repositories from different domains: 
 ## License
 
 This project is licensed under the MIT License — see the [LICENSE](LICENSE) file for details.
-## License
-
-This project is licensed under the MIT License — see the [LICENSE](LICENSE) file for details.
