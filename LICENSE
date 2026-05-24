@@ -1,0 +1,101 @@
+"""
+RepoReaderTool
+--------------
+Simulates RAG retrieval from a GitHub repository.
+Fetches the file tree and key files (README, requirements, main scripts)
+to build a structured project context for the Repo Analyzer agent.
+"""
+
+import os
+import requests
+from urllib.parse import urlparse
+
+
+class RepoReaderTool:
+    """Reads and extracts context from a GitHub repository URL."""
+
+    def use(self, url: str) -> dict:
+        """
+        Given a GitHub repo URL, return a dict containing:
+        - repo_name
+        - description (from GitHub API)
+        - file_tree (list of file paths)
+        - readme_content (raw text if available)
+        - requirements (list of dependencies if requirements.txt exists)
+        """
+        try:
+            owner, repo = self._parse_github_url(url)
+        except ValueError as e:
+            return {"error": str(e), "url": url}
+
+        headers = {}
+        token = os.getenv("GITHUB_TOKEN")
+        if token:
+            headers["Authorization"] = f"token {token}"
+
+        context = {
+            "repo_name": repo,
+            "owner": owner,
+            "url": url,
+            "description": "",
+            "file_tree": [],
+            "readme_content": "",
+            "requirements": [],
+        }
+
+        # --- Fetch repo metadata ---
+        meta_resp = requests.get(
+            f"https://api.github.com/repos/{owner}/{repo}",
+            headers=headers,
+            timeout=10,
+        )
+        if meta_resp.status_code == 200:
+            meta = meta_resp.json()
+            context["description"] = meta.get("description", "")
+            context["language"] = meta.get("language", "")
+            context["topics"] = meta.get("topics", [])
+            context["stars"] = meta.get("stargazers_count", 0)
+
+        # --- Fetch file tree ---
+        tree_resp = requests.get(
+            f"https://api.github.com/repos/{owner}/{repo}/git/trees/HEAD?recursive=1",
+            headers=headers,
+            timeout=10,
+        )
+        if tree_resp.status_code == 200:
+            tree = tree_resp.json().get("tree", [])
+            context["file_tree"] = [
+                item["path"] for item in tree if item["type"] == "blob"
+            ]
+
+        # --- Fetch README ---
+        readme_resp = requests.get(
+            f"https://api.github.com/repos/{owner}/{repo}/readme",
+            headers={**headers, "Accept": "application/vnd.github.raw"},
+            timeout=10,
+        )
+        if readme_resp.status_code == 200:
+            context["readme_content"] = readme_resp.text[:3000]  # cap to 3000 chars
+
+        # --- Fetch requirements.txt ---
+        req_resp = requests.get(
+            f"https://raw.githubusercontent.com/{owner}/{repo}/HEAD/requirements.txt",
+            headers=headers,
+            timeout=10,
+        )
+        if req_resp.status_code == 200:
+            context["requirements"] = [
+                line.strip()
+                for line in req_resp.text.splitlines()
+                if line.strip() and not line.startswith("#")
+            ]
+
+        return context
+
+    def _parse_github_url(self, url: str):
+        """Extract owner and repo name from a GitHub URL."""
+        parsed = urlparse(url.rstrip("/"))
+        parts = parsed.path.strip("/").split("/")
+        if len(parts) < 2:
+            raise ValueError(f"Cannot parse GitHub URL: {url}")
+        return parts[0], parts[1]
