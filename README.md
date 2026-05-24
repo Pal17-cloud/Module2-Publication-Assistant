@@ -7,25 +7,29 @@
 
 **Project Type:** Multi-Agent System Implementation
 **Certification:** Agentic AI Developer Certification (Module 2)
-**Contributor:** Varna Doddigarla
+**Contributor:** P Pallavi
 
 ---
 
 ## What This Does
 
 The Publication Assistant takes a GitHub repository URL and an optimization goal, then runs a 3-agent pipeline to produce a polished, keyword-optimized, structurally verified README.md automatically.
+
+```
 GitHub Repo URL + Goal Statement
-↓
-[ Agent 1: Repo Analyzer ]
-Reads files, builds structured project summary
-↓
-[ Agent 2: Metadata Recommender ]
-Searches trending keywords, optimizes title and tags
-↓
-[ Agent 3: Content Improver ]
-Writes final README, runs structural QA, saves output
-↓
-output/README_<repo>_<timestamp>.md
+           ↓
+  [ Agent 1: Repo Analyzer ]
+    Reads files, builds structured project summary
+           ↓
+  [ Agent 2: Metadata Recommender ]
+    Searches trending keywords, optimizes title and tags
+           ↓
+  [ Agent 3: Content Improver ]
+    Writes final README, runs structural QA, saves output
+           ↓
+  output/README_<repo>_<timestamp>.md
+```
+
 ---
 
 ## Human-in-the-Loop
@@ -35,6 +39,8 @@ The pipeline is designed with a clear human oversight checkpoint. After the pipe
 ---
 
 ## Folder Structure
+
+```
 Module2-Publication-Assistant/
 │
 ├── main.py                          ← run this
@@ -56,6 +62,8 @@ Module2-Publication-Assistant/
 │   └── markdown_fixer_tool.py       ← validates and fixes Markdown structure
 │
 └── output/                          ← generated README files appear here
+```
+
 ---
 
 ## Quick Start
@@ -94,10 +102,7 @@ result = assistant.run(
     goal="Optimize for senior computer vision researchers"
 )
 
-# Review the generated README before publishing
 print(result['final_output'])
-
-# Review the structural QA report — human checkpoint
 print(result['critique_report'])
 ```
 
@@ -110,6 +115,7 @@ python evaluate.py
 ```
 
 Runs two formal metrics:
+
 - **Metadata Relevance** — checks if top 5 tags match your goal
 - **Structural Integrity** — checks if the README has all required sections
 
@@ -148,14 +154,20 @@ The system was evaluated across five AI/ML repositories from different domains: 
 
 ## References
 
-1. Vaswani, A. et al. (2017). *Attention Is All You Need.* NeurIPS.
-2. OpenAI (2024). *Language Model Collaboration Framework.*
-3. LangChain (2024). *Agent Orchestration Toolkit.*
-4. LangGraph Documentation (2024). *Stateful Multi-Agent Workflows.*
-5. Serper API Documentation (2024).
+1. OpenAI (2024). Language Model Collaboration Framework. OpenAI Platform Documentation.
+2. LangChain (2024). Agent Orchestration Toolkit. LangChain Documentation.
+3. LangGraph (2024). Stateful Multi-Agent Workflows. LangGraph Documentation.
+4. Chase, H. (2023). LangChain: Building Applications with LLMs through Composability. GitHub.
+5. Serper API Documentation (2024). Real-Time Google Search API. serper.dev.
+6. GitHub REST API Documentation (2024). GitHub Developer Documentation.
+7. Lewis, P. et al. (2020). Retrieval-Augmented Generation for Knowledge-Intensive NLP Tasks. NeurIPS.
+8. Park, J. et al. (2023). Generative Agents: Interactive Simulacra of Human Behavior. UIST.
 
 ---
 
+## License
+
+This project is licensed under the MIT License — see the [LICENSE](LICENSE) file for details.
 ## License
 
 This project is licensed under the MIT License — see the [LICENSE](LICENSE) file for details.
