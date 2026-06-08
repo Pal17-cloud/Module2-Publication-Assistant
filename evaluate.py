@@ -1,93 +1,135 @@
 """
-MarkdownFixerTool
------------------
-Validates and fixes a Markdown draft to ensure it meets
-publication-ready structural requirements.
-Used by the Content Improver agent as the final quality gate.
+evaluate.py — Evaluation Script
+Runs both formal evaluation metrics:
+  5.1 Metadata Relevance   (Success Metric)
+  5.2 Structural Integrity (Safety Metric)
+
+Usage:
+    python evaluate.py
 """
 
-import re
+import os
+import json
+from dotenv import load_dotenv
+from openai import OpenAI
+from tools.markdown_fixer_tool import MarkdownFixerTool
+
+load_dotenv()
 
 
-REQUIRED_SECTIONS = [
-    "installation",
-    "usage",
-    "dependencies",
-    "requirements",
-    "evaluation",
-    "conclusion",
-]
+class Evaluator:
 
+    def __init__(self):
+        api_key = os.getenv("OPENAI_API_KEY")
+        if not api_key:
+            raise EnvironmentError("OPENAI_API_KEY is not set.")
+        self.client = OpenAI(api_key=api_key)
+        self.markdown_fixer = MarkdownFixerTool()
+        self.model = "gpt-4o"
 
-class MarkdownFixerTool:
-    """Checks and repairs Markdown structure for publication readiness."""
+    def evaluate_metadata_relevance(self, goal: str, suggested_tags: list, threshold: int = 3) -> dict:
+        if not goal or not suggested_tags:
+            return {"passed": False, "error": "Goal and tags are required."}
 
-    def use(self, raw_draft: str) -> dict:
-        """
-        Validates the draft and applies automatic fixes where possible.
+        print("\n[Evaluator] Running Metadata Relevance check...")
 
-        Args:
-            raw_draft: Raw Markdown string from the Content Improver.
+        prompt = f"""
+Evaluate whether these repository tags are relevant to the user's goal.
 
-        Returns:
-            A dict with:
-              - clean_draft (str): Fixed Markdown content.
-              - issues_found (list): List of issues detected.
-              - issues_fixed (list): List of issues auto-fixed.
-              - missing_sections (list): Sections still missing after fixes.
-              - passed (bool): True if the draft passes all checks.
-        """
-        issues_found = []
-        issues_fixed = []
-        draft = raw_draft
+User Goal: {goal}
+Suggested Tags: {suggested_tags}
 
-        # --- Check 1: Must start with H1 ---
-        if not draft.lstrip().startswith("#"):
-            issues_found.append("Missing H1 title at the top of the document.")
-            draft = "# Project Documentation\n\n" + draft
-            issues_fixed.append("Added a placeholder H1 title.")
+For each tag, decide if it is relevant (true/false).
+Return ONLY JSON:
+{{
+  "tag_evaluations": [
+    {{"tag": "tag1", "relevant": true, "reason": "..."}}
+  ],
+  "overall_rationale": "one sentence summary"
+}}
+""".strip()
 
-        # --- Check 2: No consecutive blank lines (more than 2) ---
-        if re.search(r"\n{4,}", draft):
-            issues_found.append("Excessive blank lines detected.")
-            draft = re.sub(r"\n{4,}", "\n\n\n", draft)
-            issues_fixed.append("Reduced excessive blank lines to maximum 3.")
+        try:
+            response = self.client.chat.completions.create(
+                model=self.model,
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.0,
+                max_tokens=400,
+                timeout=30,
+                response_format={"type": "json_object"},
+            )
+            data = json.loads(response.choices[0].message.content.strip())
+        except Exception as e:
+            return {"passed": False, "error": str(e)}
 
-        # --- Check 3: Unclosed code fences ---
-        fence_count = draft.count("```")
-        if fence_count % 2 != 0:
-            issues_found.append("Unclosed code fence (odd number of ``` markers).")
-            draft += "\n```\n"
-            issues_fixed.append("Appended closing ``` to fix unclosed code block.")
+        evaluations = data.get("tag_evaluations", [])
+        relevant_tags = [e["tag"] for e in evaluations if e.get("relevant")]
+        irrelevant_tags = [e["tag"] for e in evaluations if not e.get("relevant")]
+        passed = len(relevant_tags) >= threshold
 
-        # --- Check 4: Required sections ---
-        missing_sections = []
-        headings_in_draft = [
-            h.lower() for h in re.findall(r"^#{1,3}\s+(.+)$", draft, re.MULTILINE)
-        ]
-        for section in REQUIRED_SECTIONS:
-            found = any(section in heading for heading in headings_in_draft)
-            if not found:
-                missing_sections.append(section)
-                issues_found.append(f"Missing required section: '{section}'")
-
-        # --- Check 5: Trailing whitespace on lines ---
-        if re.search(r" +\n", draft):
-            issues_found.append("Trailing whitespace found on some lines.")
-            draft = re.sub(r" +\n", "\n", draft)
-            issues_fixed.append("Removed trailing whitespace from all lines.")
-
-        # --- Check 6: Ensure document ends with a newline ---
-        if not draft.endswith("\n"):
-            draft += "\n"
-            issues_fixed.append("Added trailing newline at end of document.")
-
-        passed = len(missing_sections) == 0 and len(issues_found) == len(issues_fixed)
+        status = "✅ PASS" if passed else "❌ FAIL"
+        print(f"[Evaluator] Metadata Relevance: {status} ({len(relevant_tags)}/{len(suggested_tags)} relevant)")
 
         return {
-            "clean_draft": draft,
-            "issues_found": issues_found,
-            "issues_fixed": issues_fixed,
-            "missing_sections": missing_sections,
             "passed": passed,
+            "relevant_count": len(relevant_tags),
+            "total_tags": len(suggested_tags),
+            "relevant_tags": relevant_tags,
+            "irrelevant_tags": irrelevant_tags,
+            "rationale": data.get("overall_rationale", ""),
         }
+
+    def evaluate_structural_integrity(self, markdown_content: str) -> dict:
+        if not markdown_content:
+            return {"passed": False, "error": "Markdown content is empty."}
+
+        print("\n[Evaluator] Running Structural Integrity check...")
+        fix_result = self.markdown_fixer.use(markdown_content)
+        status = "✅ PASS" if fix_result["passed"] else "❌ FAIL"
+        print(f"[Evaluator] Structural Integrity: {status}")
+
+        return {
+            "passed": fix_result["passed"],
+            "issues_found": fix_result["issues_found"],
+            "issues_fixed": fix_result["issues_fixed"],
+            "missing_sections": fix_result["missing_sections"],
+        }
+
+    def run_full_evaluation(self, pipeline_result: dict) -> dict:
+        goal = pipeline_result.get("goal", "")
+        metadata = pipeline_result.get("metadata_recommendations", {})
+        suggested_tags = metadata.get("suggested_tags", [])
+        final_output = pipeline_result.get("final_output", "")
+
+        relevance = self.evaluate_metadata_relevance(goal, suggested_tags)
+        integrity = self.evaluate_structural_integrity(final_output)
+        overall = relevance["passed"] and integrity["passed"]
+
+        print("\n" + "=" * 50)
+        print("  EVALUATION SUMMARY")
+        print("=" * 50)
+        print(f"  Metadata Relevance  : {'✅ PASS' if relevance['passed'] else '❌ FAIL'}")
+        print(f"  Structural Integrity: {'✅ PASS' if integrity['passed'] else '❌ FAIL'}")
+        print(f"  Overall             : {'✅ PASS' if overall else '❌ FAIL'}")
+        print("=" * 50)
+
+        return {
+            "overall_passed": overall,
+            "metadata_relevance": relevance,
+            "structural_integrity": integrity,
+        }
+
+
+if __name__ == "__main__":
+    from publication_assistant import PublicationAssistantOrchestrator
+
+    url = input("Enter GitHub repository URL: ").strip()
+    goal = input("Enter the goal: ").strip()
+
+    orchestrator = PublicationAssistantOrchestrator()
+    result = orchestrator.run(url=url, goal=goal)
+    result["goal"] = goal
+
+    evaluator = Evaluator()
+    report = evaluator.run_full_evaluation(result)
+    print(json.dumps(report, indent=2))
