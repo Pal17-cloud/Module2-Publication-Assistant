@@ -1,20 +1,15 @@
-# Publication Assistant: A Multi-Agent System for Automated Documentation Optimization
-
+Publication Assistant: A Multi-Agent System for Automated Documentation Optimization
 ![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)
 ![Python](https://img.shields.io/badge/Python-3.10%2B-blue)
 ![LangGraph](https://img.shields.io/badge/Orchestration-LangGraph-purple)
 ![OpenAI](https://img.shields.io/badge/LLM-GPT--4o-orange)
-
-**Project Type:** Multi-Agent System Implementation
-**Certification:** Agentic AI Developer Certification (Module 2)
-**Contributor:** P Pallavi
-
+Project Type: Multi-Agent System Implementation  
+Certification: Agentic AI Developer Certification (Module 2)  
+Contributor: P Pallavi  
+License: MIT — see LICENSE file for full terms and usage rights.
 ---
-
-## What This Does
-
+What This Does
 The Publication Assistant takes a GitHub repository URL and an optimization goal, then runs a 3-agent pipeline to produce a polished, keyword-optimized, structurally verified README.md automatically.
-
 ```
 GitHub Repo URL + Goal Statement
            ↓
@@ -29,17 +24,11 @@ GitHub Repo URL + Goal Statement
            ↓
   output/README_<repo>_<timestamp>.md
 ```
-
 ---
-
-## Human-in-the-Loop
-
-The pipeline is designed with a clear human oversight checkpoint. After the pipeline completes, the user receives two outputs: the generated README and a Structural Critique Report. The report flags any missing sections or auto-fixed issues so the user can review and adjust before publishing. The system never pushes changes to the repository automatically — the user always reviews the output first and decides whether to accept, edit, or discard it.
-
+Human-in-the-Loop
+The pipeline includes a clear human oversight checkpoint. After the pipeline completes, the user receives two outputs: the generated README and a Structural Critique Report. The report flags any missing sections or auto-fixed issues so the user can review and adjust before publishing. The system never pushes changes to the repository automatically.
 ---
-
-## Folder Structure
-
+Folder Structure
 ```
 Module2-Publication-Assistant/
 │
@@ -61,13 +50,13 @@ Module2-Publication-Assistant/
 │   ├── google_search_tool.py        ← fetches trending keywords
 │   └── markdown_fixer_tool.py       ← validates and fixes Markdown structure
 │
+├── tests/
+│   └── test_tools.py                ← unit tests for all tools
+│
 └── output/                          ← generated README files appear here
 ```
-
 ---
-
-## Quick Start
-
+Quick Start
 ```bash
 # 1. Clone
 git clone https://github.com/Pal17-cloud/Module2-Publication-Assistant.git
@@ -87,11 +76,8 @@ cp .env.example .env
 # 5. Run
 python main.py
 ```
-
 ---
-
-## Programmatic Usage
-
+Programmatic Usage
 ```python
 from publication_assistant import PublicationAssistantOrchestrator
 
@@ -105,66 +91,82 @@ result = assistant.run(
 print(result['final_output'])
 print(result['critique_report'])
 ```
-
 ---
-
-## Run Evaluation
-
+Run Tests
+```bash
+python tests/test_tools.py
+```
+All tests should pass and print a confirmation for each one.
+---
+Run Evaluation
 ```bash
 python evaluate.py
 ```
-
 Runs two formal metrics:
-
-- **Metadata Relevance** — checks if top 5 tags match your goal
-- **Structural Integrity** — checks if the README has all required sections
-
+Metadata Relevance — checks if top 5 tags match your goal
+Structural Integrity — checks if the README has all required sections
 ---
-
-## Performance Evaluation
-
-### Testing Methodology
-
-The system was evaluated across five AI/ML repositories from different domains: computer vision, NLP, reinforcement learning, time-series forecasting, and multi-agent systems. Each repository was processed with a domain-specific goal statement. Results were compared against a single-pass GPT-4o baseline with no structured analysis, no search grounding, and no Markdown validation.
-
-**Metric 1 — Metadata Relevance:** An LLM judge evaluated whether the top 5 suggested tags per repository were relevant to the user's stated goal. A run passed if at least 3 of 5 tags were relevant.
-
-**Metric 2 — Structural Integrity:** The MarkdownFixerTool checked 20 generated README files for all required sections and absence of formatting errors.
-
-**Metric 3 — Title Optimization:** An LLM relevance scorer rated both the original repository name and the optimized title on a 0 to 1 scale across 10 test repositories.
-
-### Results
-
-| Task | Metric | Baseline | Publication Assistant | Improvement |
-|------|--------|----------|-----------------------|-------------|
-| Metadata Relevance | Tag Pass Rate | 68% | 92% | +24% |
-| Structural Integrity | Section Compliance | 74% | 98% | +24% |
-| Title Optimization | Relevance Score | 0.71 | 0.89 | +25.4% |
-
+Performance Evaluation
+Testing Methodology
+The system was evaluated across five AI/ML repositories from different domains: computer vision, NLP, reinforcement learning, time-series forecasting, and multi-agent systems. Results were compared against a single-pass GPT-4o baseline with no structured analysis, no search grounding, and no Markdown validation.
+Results
+Task	Metric	Baseline	Publication Assistant	Improvement
+Metadata Relevance	Tag Pass Rate	68%	92%	+24%
+Structural Integrity	Section Compliance	74%	98%	+24%
+Title Optimization	Relevance Score	0.71	0.89	+25.4%
 ---
-
-## API Keys Needed
-
-| Key | Where to Get It |
-|-----|----------------|
-| `OPENAI_API_KEY` | https://platform.openai.com/api-keys |
-| `SERPER_API_KEY` | https://serper.dev |
-
+Troubleshooting Guide
+Problem: `OPENAI_API_KEY` not set error
+```
+Solution: Copy .env.example to .env and add your key.
+cp .env.example .env
+```
+Problem: `SERPER_API_KEY` not set warning
+```
+Solution: The pipeline will still run using fallback keywords.
+For best results, add your Serper key to .env
+Get a free key at: https://serper.dev
+```
+Problem: GitHub API rate limit exceeded
+```
+Solution: Add a GITHUB_TOKEN to your .env file.
+Get one at: https://github.com/settings/tokens
+```
+Problem: OpenAI API timeout
+```
+Solution: The system will automatically use a fallback summary.
+Check your internet connection or try again in a few minutes.
+```
+Problem: Empty or incorrect README generated
+```
+Solution: Check the Structural Critique Report in the output/ folder.
+It lists every issue found and which sections need manual attention.
+```
+Problem: Repository not found (404)
+```
+Solution: Make sure the repository is public and the URL is correct.
+Format: https://github.com/username/repository-name
+```
+Problem: `ModuleNotFoundError`
+```
+Solution: Make sure you have activated your virtual environment
+and installed all dependencies.
+source venv/bin/activate
+pip install -r requirements.txt
+```
 ---
-
-## References
-
-1. OpenAI (2024). Language Model Collaboration Framework. OpenAI Platform Documentation.
-2. LangChain (2024). Agent Orchestration Toolkit. LangChain Documentation.
-3. LangGraph (2024). Stateful Multi-Agent Workflows. LangGraph Documentation.
-4. Chase, H. (2023). LangChain: Building Applications with LLMs through Composability. GitHub.
-5. Serper API Documentation (2024). Real-Time Google Search API. serper.dev.
-6. GitHub REST API Documentation (2024). GitHub Developer Documentation.
-7. Lewis, P. et al. (2020). Retrieval-Augmented Generation for Knowledge-Intensive NLP Tasks. NeurIPS.
-8. Park, J. et al. (2023). Generative Agents: Interactive Simulacra of Human Behavior. UIST.
-
+API Keys Needed
+Key	Where to Get It	Required
+`OPENAI_API_KEY`	https://platform.openai.com/api-keys	✅ Yes
+`SERPER_API_KEY`	https://serper.dev	⚠️ Optional
+`GITHUB_TOKEN`	https://github.com/settings/tokens	⚠️ Optional
 ---
-
-## License
-
-This project is licensed under the MIT License — see the [LICENSE](LICENSE) file for details.
+Licensing
+This project is licensed under the MIT License. This means you are free to use, copy, modify, merge, publish, distribute, sublicense, and sell copies of this software, provided the original copyright notice is included. See the LICENSE file for full terms and conditions.
+---
+References
+1.Vaswani, A. et al. (2017). Attention Is All You Need. NeurIPS.
+2.OpenAI (2024). Language Model Collaboration Framework.
+3.LangChain (2024). Agent Orchestration Toolkit.
+4.LangGraph Documentation (2024). Stateful Multi-Agent Workflows.
+5.Serper API Documentation (2024).
