@@ -1,107 +1,179 @@
 """
-Agent 1 — Repo Analyzer (Data Extractor)
------------------------------------------
-Role    : Simulates RAG retrieval to understand the repository
-          structure and extract raw project context.
-Input   : Project URL and User Goal statement.
-Output  : Raw project context, file inventory, and structured
-          metadata summary — stored in the shared pipeline state.
+Agent 3 — Content Improver (Technical Editor)
+----------------------------------------------
+Generates and validates the final publication-ready README.md.
+Includes input validation, timeout handling, and graceful failures.
 """
 
 import os
-from openai import OpenAI
-from tools.repo_reader_tool import RepoReaderTool
+from datetime import datetime
+from openai import OpenAI, APITimeoutError, APIConnectionError, RateLimitError
+from tools.markdown_fixer_tool import MarkdownFixerTool
 
 
-class RepoAnalyzer:
-    """Extracts and summarises project context from a GitHub repository."""
+class ContentImprover:
 
     def __init__(self):
-        self.client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
-        self.repo_reader_tool = RepoReaderTool()
+        api_key = os.getenv("OPENAI_API_KEY")
+        if not api_key:
+            raise EnvironmentError("OPENAI_API_KEY is not set.")
+        self.client = OpenAI(api_key=api_key)
+        self.markdown_fixer_tool = MarkdownFixerTool()
         self.model = "gpt-4o"
 
     def run(self, state: dict) -> dict:
-        """
-        Step 1 of the pipeline.
-
-        Reads the repository, then uses an LLM to produce a structured
-        project summary that downstream agents can consume.
-
-        Args:
-            state: Pipeline state dict containing 'url' and 'goal'.
-
-        Returns:
-            Updated state dict with 'repo_context' and 'project_summary' added.
-        """
-        url = state.get("url", "")
+        project_summary = state.get("project_summary", "")
+        metadata = state.get("metadata_recommendations", {})
+        repo_context = state.get("repo_context", {})
         goal = state.get("goal", "")
 
-        print(f"\n[RepoAnalyzer] Reading repository: {url}")
+        if not project_summary:
+            raise ValueError("project_summary missing. Run RepoAnalyzer first.")
+        if not metadata:
+            raise ValueError("metadata_recommendations missing. Run MetadataRecommender first.")
 
-        # --- Tool call: read the repository ---
-        repo_data = self.repo_reader_tool.use(url)
+        print(f"\n[ContentImprover] Generating final README...")
 
-        if "error" in repo_data:
-            print(f"[RepoAnalyzer] Warning: {repo_data['error']}")
+        prompt = self._build_prompt(project_summary, metadata, repo_context, goal)
 
-        # --- LLM call: produce a structured project summary ---
-        prompt = self._build_prompt(repo_data, goal)
-        response = self.client.chat.completions.create(
-            model=self.model,
-            messages=[
-                {
-                    "role": "system",
-                    "content": (
-                        "You are a technical analyst specialising in AI/ML repositories. "
-                        "Your job is to extract a clear, structured project summary from "
-                        "raw repository data. Be factual and concise."
-                    ),
-                },
-                {"role": "user", "content": prompt},
-            ],
-            temperature=0.2,
-            max_tokens=800,
-        )
+        try:
+            response = self.client.chat.completions.create(
+                model=self.model,
+                messages=[
+                    {
+                        "role": "system",
+                        "content": (
+                            "You are a senior technical writer for AI/ML open-source projects. "
+                            "Write clear, professional, complete README.md files in "
+                            "GitHub-flavoured Markdown. Always include all required sections."
+                        ),
+                    },
+                    {"role": "user", "content": prompt},
+                ],
+                temperature=0.3,
+                max_tokens=2000,
+                timeout=60,
+            )
+            raw_draft = response.choices[0].message.content.strip()
 
-        project_summary = response.choices[0].message.content.strip()
-        print(f"[RepoAnalyzer] Summary generated ({len(project_summary)} chars).")
+        except APITimeoutError:
+            print("[ContentImprover] OpenAI timed out. Using minimal fallback README.")
+            raw_draft = self._fallback_readme(metadata, repo_context)
+        except RateLimitError:
+            print("[ContentImprover] Rate limit reached.")
+            raise
+        except APIConnectionError:
+            print("[ContentImprover] Cannot connect to OpenAI API.")
+            raise
+        except Exception as e:
+            print(f"[ContentImprover] Unexpected error: {e}")
+            raw_draft = self._fallback_readme(metadata, repo_context)
 
-        # --- Update and return state ---
-        state["repo_context"] = repo_data
-        state["project_summary"] = project_summary
+        print(f"[ContentImprover] Draft generated ({len(raw_draft)} chars). Running QA...")
+
+        fix_result = self.markdown_fixer_tool.use(raw_draft)
+        clean_draft = fix_result["clean_draft"]
+        critique_report = self._build_critique(fix_result)
+        output_path = self._save_output(clean_draft, repo_context)
+
+        print(f"[ContentImprover] Saved to: {output_path}")
+        print(f"[ContentImprover] QA passed: {fix_result['passed']}")
+
+        state["final_output"] = clean_draft
+        state["critique_report"] = critique_report
+        state["output_path"] = output_path
+        state["qa_passed"] = fix_result["passed"]
         return state
 
-    def _build_prompt(self, repo_data: dict, goal: str) -> str:
-        file_tree_preview = "\n".join(repo_data.get("file_tree", [])[:30])
-        readme_preview = repo_data.get("readme_content", "")[:1500]
-        requirements = ", ".join(repo_data.get("requirements", [])) or "Not found"
-
+    def _build_prompt(self, summary, metadata, repo_context, goal):
         return f"""
-You have been given the following raw data from a GitHub repository.
+Title: {metadata.get('optimized_title', 'Project')}
+Description: {metadata.get('one_line_description', '')}
+Tags: {metadata.get('suggested_tags', [])}
+URL: {repo_context.get('url', '')}
+Goal: {goal}
+Summary: {summary}
+Dependencies: {repo_context.get('requirements', [])}
 
-Repository: {repo_data.get('repo_name', 'Unknown')}
-Description: {repo_data.get('description', 'None provided')}
-Primary Language: {repo_data.get('language', 'Unknown')}
-Existing Topics/Tags: {repo_data.get('topics', [])}
-Stars: {repo_data.get('stars', 0)}
-
-User's Goal: {goal}
-
-File Tree (first 30 files):
-{file_tree_preview}
-
-Requirements:
-{requirements}
-
-README Preview:
-{readme_preview}
-
----
-Please produce a structured project summary with the following sections:
-1. Project Purpose (2-3 sentences)
-2. Core Technical Stack (bullet list)
-3. Key Features (bullet list, max 5)
-4. Target Audience
-5. Gaps or Weaknesses in Current Documentation (bullet list)
+Write a complete README.md with ALL of these sections:
+1. Title and badges
+2. One-line description
+3. Table of Contents
+4. Overview
+5. Features
+6. Requirements and Dependencies
+7. Installation and Usage with code blocks
+8. Evaluation Metrics
+9. Project Structure
+10. Conclusion
+11. License MIT
 """.strip()
+
+    def _fallback_readme(self, metadata: dict, repo_context: dict) -> str:
+        title = metadata.get("optimized_title", repo_context.get("repo_name", "Project"))
+        desc = metadata.get("one_line_description", "")
+        tags = " ".join([f"`{t}`" for t in metadata.get("suggested_tags", [])])
+        return f"""# {title}
+
+{desc}
+
+**Tags:** {tags}
+
+## Installation
+
+```bash
+pip install -r requirements.txt
+```
+
+## Usage
+
+```bash
+python main.py
+```
+
+## Dependencies
+
+See requirements.txt for full dependency list.
+
+## Evaluation
+
+See evaluate.py for evaluation metrics.
+
+## Conclusion
+
+{title} is an AI-powered documentation optimization tool.
+
+## License
+
+MIT License
+"""
+
+    def _build_critique(self, fix_result: dict) -> str:
+        lines = [
+            "## Structural Critique Report",
+            f"**QA Passed:** {'✅ Yes' if fix_result['passed'] else '❌ No'}",
+            "",
+        ]
+        if fix_result["issues_found"]:
+            lines.append("### Issues Detected")
+            for i in fix_result["issues_found"]:
+                lines.append(f"- {i}")
+        if fix_result["issues_fixed"]:
+            lines.append("\n### Auto-Fixed")
+            for f in fix_result["issues_fixed"]:
+                lines.append(f"- ✅ {f}")
+        if fix_result["missing_sections"]:
+            lines.append("\n### Still Missing (add manually)")
+            for s in fix_result["missing_sections"]:
+                lines.append(f"- ⚠️ `{s}`")
+        return "\n".join(lines)
+
+    def _save_output(self, content: str, repo_context: dict) -> str:
+        output_dir = "output"
+        os.makedirs(output_dir, exist_ok=True)
+        repo_name = repo_context.get("repo_name", "project").replace("/", "_")
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        path = f"{output_dir}/README_{repo_name}_{timestamp}.md"
+        with open(path, "w", encoding="utf-8") as f:
+            f.write(content)
+        return path
